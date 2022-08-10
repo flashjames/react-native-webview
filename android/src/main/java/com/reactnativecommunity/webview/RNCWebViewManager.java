@@ -87,6 +87,7 @@ import com.reactnativecommunity.webview.events.TopMessageEvent;
 import com.reactnativecommunity.webview.events.TopShouldStartLoadWithRequestEvent;
 import com.reactnativecommunity.webview.events.TopRenderProcessGoneEvent;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -129,6 +130,8 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @ReactModule(name = RNCWebViewManager.REACT_CLASS)
 public class RNCWebViewManager extends SimpleViewManager<WebView> {
+  public JSONArray cookieConsentBlockUrlsArray;
+
   private static final String TAG = "RNCWebViewManager";
 
   public static final int COMMAND_GO_BACK = 1;
@@ -269,6 +272,20 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
 
   private String getLackPermissionToDownloadMessage() {
     return  mDownloadingMessage == null ? DEFAULT_LACK_PERMISSION_TO_DOWNLOAD_MESSAGE : mLackPermissionToDownloadMessage;
+  }
+
+
+  @ReactProp(name = "cookieConsentBlockUrls")
+  public void cookieConsentBlockUrls(WebView view, @Nullable String urls) {
+    JSONArray jsonArray;
+    try {
+      JSONObject jsnobject = new JSONObject(urls);
+      jsonArray = jsnobject.getJSONArray("urls");
+    } catch(org.json.JSONException e) {
+      Log.d("cookieConsentBlockUrls", e.toString());
+      return;
+    }
+    cookieConsentBlockUrlsArray = jsonArray;
   }
 
   @ReactProp(name = "javaScriptEnabled")
@@ -680,7 +697,7 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
   @Override
   protected void addEventEmitters(ThemedReactContext reactContext, WebView view) {
     // Do not register default touch emitter and let WebView implementation handle touches
-    view.setWebViewClient(new RNCWebViewClient());
+    view.setWebViewClient(new RNCWebViewClient(this));
   }
 
   @Override
@@ -901,13 +918,41 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
   }
 
   protected static class RNCWebViewClient extends WebViewClient {
-
+    private RNCWebViewManager mRNCWebViewManager;
+    public RNCWebViewClient(RNCWebViewManager rncWebViewManager) {
+      super();
+      mRNCWebViewManager = rncWebViewManager;
+    }
     protected boolean mLastLoadFailed = false;
     protected @Nullable
     ReadableArray mUrlPrefixesForDefaultIntent;
     protected RNCWebView.ProgressChangedFilter progressChangedFilter = null;
     protected @Nullable String ignoreErrFailedForThisURL = null;
     protected @Nullable BasicAuthCredential basicAuthCredential = null;
+
+    @Override
+    public WebResourceResponse shouldInterceptRequest (WebView view,
+                                                       WebResourceRequest request) {
+      JSONArray urls = mRNCWebViewManager.cookieConsentBlockUrlsArray;
+      final String uri = request.getUrl().toString();
+      try {
+        for (int i = 0; i < urls.length(); i++) {
+          String url = urls.getString(i);
+          if(uri.contains(url)) {
+            Log.d("cookieConsentBlockUrls", "Block: " + uri + " - url: " + url);
+            return null;
+          }
+
+        }
+      } catch(org.json.JSONException e) {
+        Log.d("cookieConsentBlockUrls", e.toString());
+      }
+
+
+      Log.i("urls", "Uri =" + uri);
+      return super.shouldInterceptRequest(view, request);
+
+    }
 
     public void setIgnoreErrFailedForThisURL(@Nullable String url) {
       ignoreErrFailedForThisURL = url;
